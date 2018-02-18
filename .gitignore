@@ -1,0 +1,9 @@
+*.ipynb
+*.ipynb_checkpoints
+/openai_checkpoints
+.DS_Store
+*.pyc
+*.npy
+/val
+*test
+*test.sh
