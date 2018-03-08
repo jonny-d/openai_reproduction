@@ -7,10 +7,24 @@ import os
 model = Model('./model/994/model.npy')
 
 trX, vaX, teX, trY, vaY, teY = sst_binary()
-#
-trXt = model.transform(trX)
-vaXt = model.transform(vaX)
-teXt = model.transform(teX)
+
+
+if not os.path.exists('features'):
+    os.makedirs('features')
+
+    trXt = model.transform(trX)
+    vaXt = model.transform(vaX)
+    teXt = model.transform(teX)
+
+    np.save('features/trXt',trXt)
+    np.save('features/vaXt',trXt)
+    np.save('features/teXt',trXt)
+
+else:
+    trXt = np.load('features/trXt.npy')
+    vaXt = np.load('features/vaXt.npy')
+    teXt = np.load('features/teXt.npy')
+
 
 
 full_rep_acc, c, nnotzero, coef, lg_model = train_with_reg_cv(trXt, trY, vaXt, vaY, teXt, teY)
