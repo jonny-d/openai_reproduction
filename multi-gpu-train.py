@@ -7,6 +7,8 @@ import time
 from Preprocess import read_and_split_data
 import re
 
+start = time.time()
+
 parser = argparse.ArgumentParser(
                     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('--data_dir', type=str, default=None,
@@ -15,7 +17,7 @@ parser.add_argument('--saved_models_dir', type=str, default='saved_models',
                     help='Name of directory to save models during training')
 parser.add_argument('--log_dir', type=str, default='training_logs',
                     help='Name of directory for storing losses during training')
-parser.add_argument('--rnn_size', type=int, default=4096,
+parser.add_argument('--rnn_size', type=int, default=20,
                     help='Size of RNN hidden states')
 parser.add_argument('--batch_size', type=int, default=128,
                     help='RNN minibatch size')
@@ -39,6 +41,8 @@ parser.add_argument('--num_gpus', type=int, default=4,
                     help='How many GPUs to use.')
 parser.add_argument('--vocab_size', type=int, default=256,
                     help='Byte level model uses 256 dimensional inputs.')
+parser.add_argument('--timer', type=str, default='timer',
+                    help='record training time')
 
 args = parser.parse_args()
 
@@ -48,6 +52,8 @@ seq_length = args.seq_length
 embedding_size = args.embedding_size
 num_gpus = args.num_gpus
 vocabulary_size = args.vocab_size # because the inputs are bytes
+timer = args.timer
+
 
 # Total number of training bytes in the large Amazon dataset ~38.8 Billion
 training_bytes = 38800000000
@@ -83,119 +89,121 @@ else:
     initializer = tf.glorot_normal_initializer()
 
 def inference(inputs):
-        # define all of the model variables
 
-        # byte embedding
-        W_embedding = tf.get_variable('W_embedding', shape=(vocabulary_size, embedding_size), initializer=initializer)
+    # byte embedding
+    W_embedding = tf.get_variable('W_embedding', shape=(vocabulary_size, embedding_size), initializer=initializer)
 
-        # mt = (Wmxxt) ⊙ (Wmhht−1) - equation 18
-        Wmx = tf.get_variable('Wmx', shape=(embedding_size, rnn_size), initializer=initializer)
-        Wmh = tf.get_variable('Wmh', shape=(rnn_size, rnn_size), initializer=initializer )
+    # mt = (Wmxxt) ⊙ (Wmhht−1) - equation 18
+    Wmx = tf.get_variable('Wmx', shape=(embedding_size, rnn_size), initializer=initializer)
+    Wmh = tf.get_variable('Wmh', shape=(rnn_size, rnn_size), initializer=initializer )
 
+    # hˆt = Whxxt + Whmmt
+    Whx = tf.get_variable('Whx', shape=(embedding_size, rnn_size), initializer=initializer)
+    Whm = tf.get_variable('Whm', shape=(rnn_size,rnn_size), initializer=initializer)
+    Whb = tf.get_variable('Whb', shape=(1, rnn_size), initializer=initializer)
+
+    # it = σ(Wixxt + Wimmt)
+    Wix = tf.get_variable('Wix', shape=(embedding_size, rnn_size), initializer=initializer)
+    Wim = tf.get_variable('Wim', shape=(rnn_size, rnn_size), initializer=initializer)
+    Wib = tf.get_variable('Wib', shape=(1, rnn_size), initializer=initializer)
+
+    # ot = σ(Woxxt + Wommt)
+    Wox = tf.get_variable('Wox', shape=(embedding_size, rnn_size), initializer=initializer)
+    Wom = tf.get_variable('Wom', shape=(rnn_size, rnn_size), initializer=initializer)
+    Wob = tf.get_variable('Wob', shape=(1, rnn_size), initializer=initializer)
+
+    # ft =σ(Wfxxt +Wfmmt)
+    Wfx = tf.get_variable('Wfx', shape=(embedding_size, rnn_size),initializer=initializer)
+    Wfm = tf.get_variable('Wfm', shape=(rnn_size, rnn_size), initializer=initializer)
+    Wfb = tf.get_variable('Wfb', shape=(1, rnn_size), initializer=initializer)
+
+    # define the g parameters for weight normalization if wn switch is on
+    if args.wn == 1:
+
+        gmx = tf.get_variable('gmx', shape=(rnn_size), initializer=initializer)
+        gmh = tf.get_variable('gmh', shape=(rnn_size), initializer=initializer)
+
+        ghx = tf.get_variable('ghx', shape=(rnn_size), initializer=initializer)
+        ghm = tf.get_variable('ghm', shape=(rnn_size), initializer=initializer)
+
+        gix = tf.get_variable('gix', shape=(rnn_size), initializer=initializer)
+        gim = tf.get_variable('gim', shape=(rnn_size), initializer=initializer)
+
+        gox = tf.get_variable('gox', shape=(rnn_size), initializer=initializer)
+        gom = tf.get_variable('gom', shape=(rnn_size), initializer=initializer)
+
+        gfx = tf.get_variable('gfx', shape=(rnn_size), initializer=initializer)
+        gfm = tf.get_variable('gfm', shape=(rnn_size), initializer=initializer)
+
+        # normalized weights
+        Wmx = tf.nn.l2_normalize(Wmx, dim=0)*gmx
+        Wmh = tf.nn.l2_normalize(Wmh, dim=0)*gmh
+
+        Whx = tf.nn.l2_normalize(Whx,dim=0)*ghx
+        Whm = tf.nn.l2_normalize(Whm,dim=0)*ghm
+
+        Wix = tf.nn.l2_normalize(Wix,dim=0)*gix
+        Wim = tf.nn.l2_normalize(Wim,dim=0)*gim
+
+        Wox = tf.nn.l2_normalize(Wox,dim=0)*gox
+        Wom = tf.nn.l2_normalize(Wom,dim=0)*gom
+
+        Wfx = tf.nn.l2_normalize(Wfx,dim=0)*gfx
+        Wfm = tf.nn.l2_normalize(Wfm,dim=0)*gfm
+
+    # get_variables for saving state across unrolled network.
+    saved_output = tf.get_variable('saved_output', initializer=tf.zeros([tower_batch_size, rnn_size]), trainable=False)
+    saved_state = tf.get_variable('saved_state', initializer=tf.zeros([tower_batch_size, rnn_size]), trainable=False)
+
+    # classifier weights and biases.
+    w = tf.get_variable('Classifier_w', shape=(rnn_size, vocabulary_size), initializer=initializer)
+    b = tf.get_variable('Classifier_b', shape=(vocabulary_size), initializer=initializer)
+
+    # for the inputs
+    embedded_inputs  = tf.nn.embedding_lookup(W_embedding,inputs) # tensor of shape (batch_size, seq_length, embedding_size)
+    inputs_split_ = tf.split(embedded_inputs, seq_length, axis=1) # list of length seq_length with tensor elements of shape (batch_size, 1, vocabulary_size)
+    list_inputs = [tf.squeeze(input_, [1]) for input_ in inputs_split_] # get rid of singleton dimensions to get list of (batch_size, vocabulary_size) tensors
+
+    def mlstm_cell(x, h, c):
+        """
+        multiplicative LSTM cell. https://arxiv.org/pdf/1609.07959.pdf
+        """
+        # mt = (Wmxxt) ⊙ (Wmhht) - equation 18
+        mt = tf.matmul(x,Wmx) * tf.matmul(h,Wmh)
         # hˆt = Whxxt + Whmmt
-        Whx = tf.get_variable('Whx', shape=(embedding_size, rnn_size), initializer=initializer)
-        Whm = tf.get_variable('Whm', shape=(rnn_size,rnn_size), initializer=initializer)
-        Whb = tf.get_variable('Whb', shape=(1, rnn_size), initializer=initializer)
-
+        ht = tf.tanh(tf.matmul(x,Whx) + tf.matmul(mt,Whm) + Whb)
         # it = σ(Wixxt + Wimmt)
-        Wix = tf.get_variable('Wix', shape=(embedding_size, rnn_size), initializer=initializer)
-        Wim = tf.get_variable('Wim', shape=(rnn_size, rnn_size), initializer=initializer)
-        Wib = tf.get_variable('Wib', shape=(1, rnn_size), initializer=initializer)
-
+        it = tf.sigmoid(tf.matmul(x,Wix) + tf.matmul(mt,Wim)+ Wib)
         # ot = σ(Woxxt + Wommt)
-        Wox = tf.get_variable('Wox', shape=(embedding_size, rnn_size), initializer=initializer)
-        Wom = tf.get_variable('Wom', shape=(rnn_size, rnn_size), initializer=initializer)
-        Wob = tf.get_variable('Wob', shape=(1, rnn_size), initializer=initializer)
-
+        ot = tf.sigmoid(tf.matmul(x,Wox) + tf.matmul(mt,Wom)+ Wob)
         # ft =σ(Wfxxt +Wfmmt)
-        Wfx = tf.get_variable('Wfx', shape=(embedding_size, rnn_size),initializer=initializer)
-        Wfm = tf.get_variable('Wfm', shape=(rnn_size, rnn_size), initializer=initializer)
-        Wfb = tf.get_variable('Wfb', shape=(1, rnn_size), initializer=initializer)
+        ft = tf.sigmoid(tf.matmul(x,Wfx) + tf.matmul(mt,Wfm)+ Wfb)
 
-        # define the g parameters for weight normalization if wn switch is on
-        if args.wn == 1:
+        c_new = (ft * c) + (it * ht)
 
-            gmx = tf.get_variable('gmx', shape=(rnn_size), initializer=initializer)
-            gmh = tf.get_variable('gmh', shape=(rnn_size), initializer=initializer)
+        h_new = tf.tanh(c_new) * ot
 
-            ghx = tf.get_variable('ghx', shape=(rnn_size), initializer=initializer)
-            ghm = tf.get_variable('ghm', shape=(rnn_size), initializer=initializer)
+        return h_new, c_new
 
-            gix = tf.get_variable('gix', shape=(rnn_size), initializer=initializer)
-            gim = tf.get_variable('gim', shape=(rnn_size), initializer=initializer)
+    # Unrolled LSTM loop.
+    outputs = list()
+    # output and state are initially zero
+    output = saved_output
+    state = saved_state
+    for i in list_inputs:
+        output, state = mlstm_cell(i, output, state)
+        outputs.append(output)
 
-            gox = tf.get_variable('gox', shape=(rnn_size), initializer=initializer)
-            gom = tf.get_variable('gom', shape=(rnn_size), initializer=initializer)
+    # save the state between unrollings
+    with tf.control_dependencies([saved_output.assign(output),saved_state.assign(state)]):
+        # Classifier.
+        logits = tf.nn.xw_plus_b(tf.concat(outputs, 0), w, b)   # logits.shape = (batch_size*seq_length, vocabulary_size)
 
-            gfx = tf.get_variable('gfx', shape=(rnn_size), initializer=initializer)
-            gfm = tf.get_variable('gfm', shape=(rnn_size), initializer=initializer)
+    # logits is an array of shape (batch_size * seq_length, vocabulary_size). Each row is a probability mass for each input character
+    return logits
 
-            # normalized weights
-            Wmx = tf.nn.l2_normalize(Wmx, dim=0)*gmx
-            Wmh = tf.nn.l2_normalize(Wmh, dim=0)*gmh
 
-            Whx = tf.nn.l2_normalize(Whx,dim=0)*ghx
-            Whm = tf.nn.l2_normalize(Whm,dim=0)*ghm
-
-            Wix = tf.nn.l2_normalize(Wix,dim=0)*gix
-            Wim = tf.nn.l2_normalize(Wim,dim=0)*gim
-
-            Wox = tf.nn.l2_normalize(Wox,dim=0)*gox
-            Wom = tf.nn.l2_normalize(Wom,dim=0)*gom
-
-            Wfx = tf.nn.l2_normalize(Wfx,dim=0)*gfx
-            Wfm = tf.nn.l2_normalize(Wfm,dim=0)*gfm
-
-        # get_variables for saving state across unrolled network.
-        saved_output = tf.get_variable('saved_output', initializer=tf.zeros([tower_batch_size, rnn_size]), trainable=False)
-        saved_state = tf.get_variable('saved_state', initializer=tf.zeros([tower_batch_size, rnn_size]), trainable=False)
-
-        # classifier weights and biases.
-        w = tf.get_variable('Classifier_w', shape=(rnn_size, vocabulary_size), initializer=initializer)
-        b = tf.get_variable('Classifier_b', shape=(vocabulary_size), initializer=initializer)
-
-        # for the inputs
-        embedded_inputs  = tf.nn.embedding_lookup(W_embedding,inputs) # tensor of shape (batch_size, seq_length, embedding_size)
-        inputs_split_ = tf.split(embedded_inputs, seq_length, axis=1) # list of length seq_length with tensor elements of shape (batch_size, 1, vocabulary_size)
-        list_inputs = [tf.squeeze(input_, [1]) for input_ in inputs_split_] # get rid of singleton dimensions to get list of (batch_size, vocabulary_size) tensors
-
-        def mlstm_cell(x, h, c):
-            """
-            multiplicative LSTM cell. https://arxiv.org/pdf/1609.07959.pdf
-            """
-            # mt = (Wmxxt) ⊙ (Wmhht) - equation 18
-            mt = tf.matmul(x,Wmx) * tf.matmul(h,Wmh)
-            # hˆt = Whxxt + Whmmt
-            ht = tf.tanh(tf.matmul(x,Whx) + tf.matmul(mt,Whm) + Whb)
-            # it = σ(Wixxt + Wimmt)
-            it = tf.sigmoid(tf.matmul(x,Wix) + tf.matmul(mt,Wim)+ Wib)
-            # ot = σ(Woxxt + Wommt)
-            ot = tf.sigmoid(tf.matmul(x,Wox) + tf.matmul(mt,Wom)+ Wob)
-            # ft =σ(Wfxxt +Wfmmt)
-            ft = tf.sigmoid(tf.matmul(x,Wfx) + tf.matmul(mt,Wfm)+ Wfb)
-
-            c_new = (ft * c) + (it * ht)
-
-            h_new = tf.tanh(c_new) * ot
-
-            return h_new, c_new
-
-        # Unrolled LSTM loop.
-        outputs = list()
-        # output and state are initially zero
-        output = saved_output
-        state = saved_state
-        for i in list_inputs:
-            output, state = mlstm_cell(i, output, state)
-            outputs.append(output)
-
-        # save the state between unrollings
-        with tf.control_dependencies([saved_output.assign(output),saved_state.assign(state)]):
-            # Classifier.
-            logits = tf.nn.xw_plus_b(tf.concat(outputs, 0), w, b)   # logits.shape = (batch_size*seq_length, vocabulary_size)
-
-        # logits is an array of shape (batch_size * seq_length, vocabulary_size). Each row is a probability mass for each input character
-        return logits
+print('done!')
 
 def loss(logits,labels):
     """
@@ -344,6 +352,11 @@ with tf.Graph().as_default(), tf.device('/cpu:0'):
             np.save(checkpoint_path, weights_list)
             print('Initialized model saved')
 
+        duration = time.time() - start
+
+        with open(timer, 'a') as f:
+            f.write('pre-session: {}'.format(duration) + "\n")
+
         # this is the train loop
         for step in xrange(num_steps):
 
@@ -374,6 +387,10 @@ with tf.Graph().as_default(), tf.device('/cpu:0'):
                 logs[:, step] = result[1:]
 
             duration = time.time() - start
+
+            with open(timer, 'a') as f:
+                f.write('step:{} {}'.format(step, duration) + "\n")
+
 
             print("Global step: {}, progress on shard {}: ({}/{}), average_loss = {:.3f}, average_bpc = {:.3f}, time/batch = {:.3f}, learning_rate = {}"
                 .format(gs, args.shard, step,num_steps, result[1], result[1]/np.log(2) ,duration, lr))

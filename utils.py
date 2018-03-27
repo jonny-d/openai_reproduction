@@ -59,13 +59,13 @@ def preprocess(text, front_pad='\n ', end_pad=' '):
     'change the next two lines because the original code is for Python 3'
     # this function removes the escape characters from the input string [text] and also
     # adds a newline to the beggining and a space and the end as start and end tokens for each review
-    h = HTMLParser()
-    text = unicode(text)
-    text = h.unescape(text)
-
-    text = text.replace('\n', ' ').strip()
+    # h = HTMLParser()
+    # text = unicode(text)
+    # text = h.unescape(text)
+    #
+    #text = text.replace('\n', ' ').strip()
     text = front_pad+text+end_pad
-    text = text.encode('utf-8')
+    text = text.encode('utf_16_be')
     text = bytearray(text) # for python 2
     return text
 

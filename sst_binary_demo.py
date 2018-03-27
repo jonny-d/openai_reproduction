@@ -4,26 +4,37 @@ from utils import sst_binary, train_with_reg_cv
 import numpy as np
 import os
 
-model = Model('./model/994/model.npy')
+model = Model('/Users/jonathan/Desktop/openai_reproduction_repo/model/994/model.npy')
 
 trX, vaX, teX, trY, vaY, teY = sst_binary()
 
-
-if not os.path.exists('features'):
-    os.makedirs('features')
+if not os.path.exists('features/amazon'):
+    os.makedirs('features/amazon')
 
     trXt = model.transform(trX)
     vaXt = model.transform(vaX)
     teXt = model.transform(teX)
 
-    np.save('features/trXt',trXt)
-    np.save('features/vaXt',trXt)
-    np.save('features/teXt',trXt)
+    np.save('features/amazon/trXt',trXt)
+    np.save('features/amazon/vaXt',vaXt)
+    np.save('features/amazon/teXt',teXt)
 
 else:
-    trXt = np.load('features/trXt.npy')
-    vaXt = np.load('features/vaXt.npy')
-    teXt = np.load('features/teXt.npy')
+    print('load features')
+    trXt = np.load('features/amazon/trXt.npy')
+    vaXt = np.load('features/amazon/vaXt.npy')
+    teXt = np.load('features/amazon/teXt.npy')
+
+
+# delete sentiment neuron
+# trXt[:, 3984]=0
+# vaXt[:, 3984]=0
+# teXt[:, 3984]=0
+
+#only sentiment neuron
+trXt[0:3984, 3985:]=0
+vaXt[0:3984, 3985:]=0
+teXt[0:3984, 3985:]=0
 
 
 
