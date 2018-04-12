@@ -14,6 +14,10 @@ This code was developed using Python 2.7 and Tensorflow r1.4.
 
 # Usage
 
+## Quick Classify
+
+run `cat ./model/994/x* > ./model/994/model.npy` to get the pre-trained model weights (Github has a 100Mb size limit on files so I had to split model.npy). Running `python sst_binary_demo` will classify the Stanford Sentiment data and generate a histogram of the Sentiment Neuron's values for each review. 
+
 ## Data Preprocessing
 
 The 'aggresively deduplicated' Amazon review dataset must be be requested for download [here](http://jmcauley.ucsd.edu/data/amazon/). The uncompressed file is a large JSON file (~58GB). In the paper the data is split into 1000 shards containing equal number of reviews. The `shard_data.py` file can be used to split the data into shards.
