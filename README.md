@@ -16,7 +16,7 @@ This code was developed using Python 2.7 and Tensorflow r1.4.
 
 ## Quick Classify
 
-run `cat ./model/994/x* > ./model/994/model.npy` to get the pre-trained model weights (Github has a 100Mb size limit on files so I had to split model.npy). Running `python sst_binary_demo` will classify the Stanford Sentiment data and generate a histogram of the Sentiment Neuron's values for each review. 
+run `cat ./model/994/x* > ./model/994/model.npy` to get the pre-trained model weights (Github has a 100Mb size limit on files so I had to split model.npy). Running `python sst_binary_demo.py` will classify the Stanford Sentiment data and generate a histogram of the Sentiment Neuron's values for each review.
 
 ## Data Preprocessing
 
@@ -30,7 +30,7 @@ The `multi-gpu-train.py` script will create two directories: `saved_models` and 
 
 `saved_models` is where the model checkpoints are saved. After training the model on a shard of data, the model is saved in a numbered subfolder corresponding to that shard. For example, after training the model on shard 0, the model is saved in `saved_models/0` which will contain two files: `model.npy`, which is a list of numpy arrays which are the model weights and `global_step.npy`, a scalar value which keeps track of the number of updates applied to the parameters and is also used to calculate the learning rate, which is decayed linearly to zero in the original work.
 
-`training_logs` is used to saved the loss of the network during training. These values are also saved in numbered subfolders after each shard is processed. For example after processing shard 0, `training_logs/0` will contain the loss for shard 0 which is saved in a file called `logs.npy`. The `logs.npy` file stores a (num_gpus + 1, num_updates) array, where each row is the loss for each GPU 'tower' at each time step and the last row is the average across towers. Tensorflow has built in tools (train.Saver() and summary.FileWriter() objects) for saving models and logs but because of the size of the model and data I found it was easier to save and load the models with numpy.
+`training_logs` is used to save the loss of the network during training. These values are also saved in numbered subfolders after each shard is processed. For example after processing shard 0, `training_logs/0` will contain the loss for shard 0 which is saved in a file called `logs.npy`. The `logs.npy` file stores a (num_gpus + 1, num_updates) array, where each row is the loss for each GPU 'tower' at each time step and the last row is the average across towers. Tensorflow has built in tools (train.Saver() and summary.FileWriter() objects) for saving models and logs but because of the size of the model and data I found it was easier to save and load the models with numpy.
 
 The `restore_exp.sh` script can be used to resume the training from a checkpoint simply by changing the range of the for loop. The training will likely crash at some point, because the training time is long, and so probably will need to be restored.
 

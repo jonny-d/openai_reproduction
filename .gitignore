@@ -1,6 +1,6 @@
-*.ipynb
-*.ipynb_checkpoints
-/openai_checkpoints
+*.ipy*
+/*checkpoints
+/features
 .DS_Store
 *.pyc
 *.npy

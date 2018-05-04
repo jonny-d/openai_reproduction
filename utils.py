@@ -62,10 +62,10 @@ def preprocess(text, front_pad='\n ', end_pad=' '):
     # h = HTMLParser()
     # text = unicode(text)
     # text = h.unescape(text)
-    #
-    #text = text.replace('\n', ' ').strip()
+
+    text = text.replace('\n', ' ').strip()
     text = front_pad+text+end_pad
-    text = text.encode('utf_16_be')
+    text = text.encode('utf-8')
     text = bytearray(text) # for python 2
     return text
 

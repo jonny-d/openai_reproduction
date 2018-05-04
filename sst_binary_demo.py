@@ -4,7 +4,7 @@ from utils import sst_binary, train_with_reg_cv
 import numpy as np
 import os
 
-model = Model('/Users/jonathan/Desktop/openai_reproduction_repo/model/994/model.npy')
+model = Model('./model/994/model.npy')
 
 trX, vaX, teX, trY, vaY, teY = sst_binary()
 
@@ -24,19 +24,6 @@ else:
     trXt = np.load('features/amazon/trXt.npy')
     vaXt = np.load('features/amazon/vaXt.npy')
     teXt = np.load('features/amazon/teXt.npy')
-
-
-# delete sentiment neuron
-# trXt[:, 3984]=0
-# vaXt[:, 3984]=0
-# teXt[:, 3984]=0
-
-#only sentiment neuron
-trXt[0:3984, 3985:]=0
-vaXt[0:3984, 3985:]=0
-teXt[0:3984, 3985:]=0
-
-
 
 full_rep_acc, c, nnotzero, coef, lg_model = train_with_reg_cv(trXt, trY, vaXt, vaY, teXt, teY)
 print('%05.2f test accuracy'%full_rep_acc)
