@@ -7,8 +7,6 @@ import time
 from Preprocess import read_and_split_data
 import re
 
-start = time.time()
-
 parser = argparse.ArgumentParser(
                     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('--data_dir', type=str, default=None,
@@ -41,8 +39,6 @@ parser.add_argument('--num_gpus', type=int, default=4,
                     help='How many GPUs to use.')
 parser.add_argument('--vocab_size', type=int, default=256,
                     help='Byte level model uses 256 dimensional inputs.')
-parser.add_argument('--timer', type=str, default='timer',
-                    help='record training time')
 
 args = parser.parse_args()
 
@@ -52,8 +48,6 @@ seq_length = args.seq_length
 embedding_size = args.embedding_size
 num_gpus = args.num_gpus
 vocabulary_size = args.vocab_size # because the inputs are bytes
-timer = args.timer
-
 
 # Total number of training bytes in the large Amazon dataset ~38.8 Billion
 training_bytes = 38800000000
@@ -202,9 +196,6 @@ def inference(inputs):
     # logits is an array of shape (batch_size * seq_length, vocabulary_size). Each row is a probability mass for each input character
     return logits
 
-
-print('done!')
-
 def loss(logits,labels):
     """
     logits is from the inference function.
@@ -352,45 +343,32 @@ with tf.Graph().as_default(), tf.device('/cpu:0'):
             np.save(checkpoint_path, weights_list)
             print('Initialized model saved')
 
-        duration = time.time() - start
 
-        with open(timer, 'a') as f:
-            f.write('pre-session: {}'.format(duration) + "\n")
+
 
         # this is the train loop
         for step in xrange(num_steps):
 
             # the learning rate depends on the global_step if lr_decay is selected
             gs = sess.run(global_step)
-
             # record the time taken for each update
             start = time.time()
             # if the lr_decay switch is on
             if args.lr_decay == 1:
-
                 # linearly decay the learning rate to zero over the number of updates
                 lr = init_lr-(((gs)*init_lr)/args.lr_decay_steps)
-
                 if lr < 1.3*10**-14:
                     lr = 1.3*10**-14
-
                 result = sess.run([apply_gradient_op, average_loss]  + tower_losses, feed_dict={learning_rate:lr})
-
                 # save losses
                 logs[:, step] = result[1:]
-
             # else use a constant learning rate throughout training
             else:
                 result = sess.run([apply_gradient_op] + [average_loss] + tower_losses, feed_dict={learning_rate:init_lr})
-
                 # save losses
                 logs[:, step] = result[1:]
 
             duration = time.time() - start
-
-            with open(timer, 'a') as f:
-                f.write('step:{} {}'.format(step, duration) + "\n")
-
 
             print("Global step: {}, progress on shard {}: ({}/{}), average_loss = {:.3f}, average_bpc = {:.3f}, time/batch = {:.3f}, learning_rate = {}"
                 .format(gs, args.shard, step,num_steps, result[1], result[1]/np.log(2) ,duration, lr))
