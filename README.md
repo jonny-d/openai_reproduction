@@ -1,3 +1,7 @@
+
+# Update
+This repository is provided as is and will not be updated, If you are interested in the sentiment neuron work it might be worth checking out https://github.com/guillitte/pytorch-sentiment-neuron instead.
+
 # Learning to Generate Reviews and Discovering Sentiment Reproduction
 
 This repository provides a Tensorflow implementation of the model from the paper [Generating Reviews and Discovering Sentiment](https://arxiv.org/abs/1704.01444) by Radford et al. This code was created in an effort to reproduce the results reported in the original paper.
@@ -61,6 +65,3 @@ Training loss in bits per character, of the network over the course of training.
  This like some of other Didion's books I have read it could be rather lengthy but I am pleasantly surprised at all
 
  >This is the most unique album I've ever heard, and anyone who's ever listened to a huge Sigur Ros album - before you believed - is worthy. And yes, parents account that to worship of Popular music, and true talent
-
-
-A more in depth description of the reproduction attempt will be made available soon!
